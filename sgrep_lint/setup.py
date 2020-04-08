@@ -15,7 +15,7 @@ setuptools.setup(
 	'requests==2.22.0'
     ],
     entry_points={
-      'console_scripts': ['sgrep_lint_python=sgrep:main']
+      'console_scripts': ['sgrok=sgrep:main']
     },
     py_modules=["sgrep", "config_resolver", "constants", "evaluation", "sgrep_main", "sgrep_types", "util"],
     classifiers=[
