@@ -1,4 +1,5 @@
 from pathlib import Path
+import traceback
 from typing import Any
 from typing import Dict
 from typing import List
@@ -21,7 +22,7 @@ def _generate_fix(rule: Rule, rule_match: RuleMatch) -> Optional[Any]:
     return fix_str
 
 
-def _modify_file(rule_match: RuleMatch, fix: str) -> None:
+def _modify_file(rule_match: RuleMatch, fix: str, use_git_conflict_markers: bool) -> None:
     p = Path(rule_match.path)
     SPLIT_CHAR = "\n"
     contents = p.read_text()
@@ -39,9 +40,23 @@ def _modify_file(rule_match: RuleMatch, fix: str) -> None:
     before_lines = lines[:start_line]
     before_on_start_line = lines[start_line][:start_col]
     after_on_end_line = lines[end_line][end_col + 1 :]  # next char after end of match
+    unmodified_lines = lines[start_line:end_line + 1] # TODO
     modified_lines = (before_on_start_line + fix + after_on_end_line).splitlines()
     after_lines = lines[end_line + 1 :]  # next line after end of match
-    contents_after_fix = before_lines + modified_lines + after_lines
+
+    if use_git_conflict_markers:
+        # desired output:
+        # <<<<<<< HEAD
+        # some_function('a') # original line
+        # =======
+        # some_other_function('b') # our autofix
+        # >>>>>>> semgrep-patch-<ruleid>
+        start_patch_mark = "<<<<<<< HEAD"
+        middle_patch_mark = "======="
+        end_patch_mark = f">>>>>>> semgrep-patch-{rule_match.id}"
+        contents_after_fix = before_lines + [start_patch_mark] + unmodified_lines + [middle_patch_mark] + modified_lines + [end_patch_mark] + after_lines
+    else:
+        contents_after_fix = before_lines + modified_lines + after_lines
 
     contents_after_fix_str = SPLIT_CHAR.join(contents_after_fix)
     p.write_text(contents_after_fix_str)
@@ -60,10 +75,10 @@ def apply_fixes(rule_matches_by_rule: Dict[Rule, List[RuleMatch]]) -> None:
             if fix:
                 filepath = rule_match.path
                 try:
-                    _modify_file(rule_match, fix)
+                    _modify_file(rule_match, fix, True) 
                     modified_files.add(filepath)
                 except Exception as e:
-                    print_error_exit(f"unable to modify file: {filepath}: {e}")
+                    print_error_exit(f"unable to modify file: {filepath}: {e} {traceback.format_exc()}")
     num_modified = len(modified_files)
     print_msg(
         f"Successfully modified {num_modified} file{'s' if num_modified > 1 else ''}."
